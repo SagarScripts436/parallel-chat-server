@@ -1,59 +1,76 @@
 import socket
 import threading
+import tkinter as tk
+from tkinter import simpledialog
+from tkinter import scrolledtext
+from tkinter import messagebox
 
 # ===============================
 # Configuration
 # ===============================
-
-HOST = "127.0.0.1"   # Change to server IP if running on another machine
+HOST = "127.0.0.1"
 PORT = 5000
 BUFFER_SIZE = 1024
 
 # ===============================
 # Connect to Server
 # ===============================
-
-nickname = input("Choose your nickname: ")
-
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.connect((HOST, PORT))
 
 
-# ===============================
-# Receive Messages from Server
-# ===============================
+class ChatClient:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Parallel Chat Client")
 
-def receive_messages():
-    while True:
-        try:
-            message = client.recv(BUFFER_SIZE).decode()
+        # Ask nickname
+        self.nickname = simpledialog.askstring("Nickname", "Choose a nickname:", parent=root)
 
-            if message == "NICK":
-                client.send(nickname.encode())
-            else:
-                print(message)
-        except:
-            print("❌ Disconnected from server.")
-            client.close()
-            break
+        # Chat display area
+        self.chat_area = scrolledtext.ScrolledText(root)
+        self.chat_area.pack(padx=10, pady=10)
+        self.chat_area.config(state='disabled')
 
+        # Message entry
+        self.msg_entry = tk.Entry(root)
+        self.msg_entry.pack(padx=10, pady=5, fill=tk.X)
+        self.msg_entry.bind("<Return>", self.send_message)
 
-# ===============================
-# Send Messages to Server
-# ===============================
+        # Send button
+        self.send_button = tk.Button(root, text="Send", command=self.send_message)
+        self.send_button.pack(pady=5)
 
-def send_messages():
-    while True:
-        message = f"{nickname}: {input('')}"
+        # Start receive thread
+        receive_thread = threading.Thread(target=self.receive_messages)
+        receive_thread.daemon = True
+        receive_thread.start()
+
+    def receive_messages(self):
+        while True:
+            try:
+                message = client.recv(BUFFER_SIZE).decode()
+                if message == "NICK":
+                    client.send(self.nickname.encode())
+                else:
+                    self.chat_area.config(state='normal')
+                    self.chat_area.insert(tk.END, message + "\n")
+                    self.chat_area.yview(tk.END)
+                    self.chat_area.config(state='disabled')
+            except:
+                messagebox.showerror("Error", "Connection lost!")
+                client.close()
+                break
+
+    def send_message(self, event=None):
+        message = f"{self.nickname}: {self.msg_entry.get()}"
         client.send(message.encode())
+        self.msg_entry.delete(0, tk.END)
 
 
 # ===============================
-# Start Threads
+# Run GUI
 # ===============================
-
-receive_thread = threading.Thread(target=receive_messages)
-receive_thread.start()
-
-send_thread = threading.Thread(target=send_messages)
-send_thread.start()
+root = tk.Tk()
+app = ChatClient(root)
+root.mainloop()
